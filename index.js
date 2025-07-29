@@ -26,15 +26,7 @@ const client = new MongoClient(uri, {
 //     return res.status(401).send({ message: 'Unauthorized access' });
 //   }
 
-//   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-//     if (err) {
-//       return res.status(401).send({ message: 'Unauthorized access: Invalid or expired token' });
-//     }
-//     req.decoded = decoded;
-//     next();
-//   });
-// };
-// Middlewares
+
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -65,54 +57,75 @@ async function run() {
       const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '1h' }); // Short-lived token
       res.send({ token });
     });
-// app.post('/jwt', async (req, res) => {
-//   const user = req.body;
-//   if (!user || !user.email) {
-//     return res.status(400).send({ message: "Missing user data" });
-//   }
-
-//   const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '1h' });
-//   res.send({ token });
-// });
-
-
 app.get('/users', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;         // Current page, default 1
-    const limit = parseInt(req.query.limit) || 5;       // Items per page, default 5
-    const statusFilter = req.query.status || '';        // Status filter: 'active', 'blocked', or ''
+    const { page = 1, limit = 100, status = 'active', bloodGroup, district, upazila } = req.query;
+    const query = { role: "donor" };
 
-    const query = {};
-    if (statusFilter) {
-      query.status = statusFilter;
-    }
+    if (status) query.status = status;
+    if (bloodGroup) query.bloodGroup = bloodGroup;
+    if (district) query.district = district;
+    if (upazila) query.upazila = upazila;
 
-    // Count total users matching the filter
     const totalUsers = await userCollection.countDocuments(query);
-
-    // Calculate total pages
     const totalPages = Math.ceil(totalUsers / limit);
 
-    // Fetch users for the current page with filtering and limit
     const users = await userCollection.find(query)
       .skip((page - 1) * limit)
-      .limit(limit)
-      .project({ password: 0, confirmPassword: 0 }) // exclude sensitive fields
+      .limit(parseInt(limit))
+      .project({ password: 0, confirmPassword: 0 }) // Exclude sensitive info
       .toArray();
 
-    console.log("Fetched users:", users.length);
-
-  res.json({
-  users,
-  totalUsers,
-  totalPages,
-  currentPage: page,
-});
+    res.json({
+      users,
+      totalUsers,
+      totalPages,
+      currentPage: parseInt(page),
+    });
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ message: 'Server error fetching users' });
   }
 });
+
+
+// app.get('/users', async (req, res) => {
+//   try {
+//     const page = parseInt(req.query.page) || 1;         // Current page, default 1
+//     const limit = parseInt(req.query.limit) || 5;       // Items per page, default 5
+//     const statusFilter = req.query.status || '';        // Status filter: 'active', 'blocked', or ''
+
+//     const query = {};
+//     if (statusFilter) {
+//       query.status = statusFilter;
+//     }
+
+//     // Count total users matching the filter
+//     const totalUsers = await userCollection.countDocuments(query);
+
+//     // Calculate total pages
+//     const totalPages = Math.ceil(totalUsers / limit);
+
+//     // Fetch users for the current page with filtering and limit
+//     const users = await userCollection.find(query)
+//       .skip((page - 1) * limit)
+//       .limit(limit)
+//       .project({ password: 0, confirmPassword: 0 }) // exclude sensitive fields
+//       .toArray();
+
+//     console.log("Fetched users:", users.length);
+
+//   res.json({
+//   users,
+//   totalUsers,
+//   totalPages,
+//   currentPage: page,
+// });
+//   } catch (error) {
+//     console.error('Error fetching users:', error);
+//     res.status(500).json({ message: 'Server error fetching users' });
+//   }
+// });
 
 
     // Protected route example
