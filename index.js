@@ -82,43 +82,6 @@ app.get('/users', async (req, res) => {
 });
 
 
-// app.get('/users', async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;         // Current page, default 1
-//     const limit = parseInt(req.query.limit) || 5;       // Items per page, default 5
-//     const statusFilter = req.query.status || '';        // Status filter: 'active', 'blocked', or ''
-
-//     const query = {};
-//     if (statusFilter) {
-//       query.status = statusFilter;
-//     }
-
-//     // Count total users matching the filter
-//     const totalUsers = await userCollection.countDocuments(query);
-
-//     // Calculate total pages
-//     const totalPages = Math.ceil(totalUsers / limit);
-
-//     // Fetch users for the current page with filtering and limit
-//     const users = await userCollection.find(query)
-//       .skip((page - 1) * limit)
-//       .limit(limit)
-//       .project({ password: 0, confirmPassword: 0 }) // exclude sensitive fields
-//       .toArray();
-
-//     console.log("Fetched users:", users.length);
-
-//   res.json({
-//   users,
-//   totalUsers,
-//   totalPages,
-//   currentPage: page,
-// });
-//   } catch (error) {
-//     console.error('Error fetching users:', error);
-//     res.status(500).json({ message: 'Server error fetching users' });
-//   }
-// });
 
 
     // Protected route example
