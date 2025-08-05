@@ -7,16 +7,14 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 8002;
 
-// Middleware
-const cors = require("cors");
 
 app.use(
   cors({
-    origin: ['https://bloodr-adf45.web.app', 'http://localhost:5177'], // allow your frontend domains
+    origin: ['https://bloodr-adf45.web.app', 'http://localhost:5178', 'http://localhost:5173',], // allow your frontend domains
     credentials: true,
   })
 );
-const cors = require("cors");
+
 
 
 
@@ -55,15 +53,19 @@ const userCollection = db.collection('users');
 const donationRequestCollection = db.collection('donation-requests');
 const blogCollection = db.collection('blogs');
 const paymentCollection = db.collection("payments");
+
 app.post('/jwt', async (req, res) => {
   const user = req.body;
-  const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '1h' }); // Short-lived token
+  const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '7d' }); // Short-lived token
   res.send({ token });
 });
+
+
+
 app.get('/users', async (req, res) => {
   try {
-    const { page = 1, limit = 100, status = 'active', bloodGroup, district, upazila } = req.query;
-    const query = { role: "donor" };
+    const { page = 1, limit = 100, status, bloodGroup, district, upazila } = req.query;
+    const query = {};
 
     if (status) query.status = status;
     if (bloodGroup) query.bloodGroup = bloodGroup;
@@ -76,7 +78,7 @@ app.get('/users', async (req, res) => {
     const users = await userCollection.find(query)
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
-      .project({ password: 0, confirmPassword: 0 }) // Exclude sensitive info
+      .project({ password: 0, confirmPassword: 0 })
       .toArray();
 
     res.json({
@@ -90,6 +92,7 @@ app.get('/users', async (req, res) => {
     res.status(500).json({ message: 'Server error fetching users' });
   }
 });
+
 
 
 
@@ -117,6 +120,8 @@ app.get('/users/:email', verifyToken, async (req, res) => {
     res.status(500).send({ message: 'Internal server error' });
   }
 });
+
+
 app.post('/users', async (req, res) => {
   const user = req.body;
   // Insert email if user doesn't exist
@@ -132,24 +137,6 @@ app.post('/users', async (req, res) => {
   res.send(result);
 });
 
-//     app.post('/users', async (req, res) => {
-//   const user = req.body;
-
-//   if (!user || !user.email || !user.password) {
-//     return res.status(400).send({ message: "Incomplete user data" });
-//   }
-
-//   const existingUser = await userCollection.findOne({ email: user.email });
-//   if (existingUser) {
-//     return res.send({ message: 'User already exists', insertedId: null });
-//   }
-
-//   user.status = "active";
-//   user.role = "donor"; // default
-//   const result = await userCollection.insertOne(user);
-//   res.send(result);
-// });
-// Update user status
 app.patch('/users/:id/status', async (req, res) => {
   const id = req.params.id;
   const { status } = req.body;
@@ -216,9 +203,6 @@ app.post('/donation-requests', async (req, res) => {
   res.send(result);
 });
 
-// //Get all donation request
-
-
 
 //Get all donation request
 app.get('/donation-requests', async (req, res) => {
@@ -247,48 +231,69 @@ app.get('/donation-requests', async (req, res) => {
     res.status(500).send({ error: 'An error occurred while fetching donation requests' });
   }
 });
-
 app.patch('/donation-requests/:id', async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const updateData = req.body;
 
   try {
     const result = await donationRequestCollection.updateOne(
       { _id: new ObjectId(id) },
-      { $set: { status } }
+      { $set: updateData }
     );
 
     if (result.modifiedCount === 1) {
-      res.send({ message: 'Donation request status updated successfully' });
+      res.send({ message: 'Donation request updated successfully' });
     } else {
-      res.status(404).send({ error: 'Donation request not found' });
+      res.status(404).send({ error: 'Donation request not found or no change made' });
     }
   } catch (error) {
-    console.error('Error updating donation request status:', error);
-    res.status(500).send({ error: 'An error occurred while updating donation request status' });
+    console.error('Error updating donation request:', error);
+    res.status(500).send({ error: 'An error occurred while updating donation request' });
+  }
+});
+
+
+// GET /donation-requests/:id
+app.get('/donation-requests/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await donationRequestCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!result) {
+      return res.status(404).send({ error: 'Donation request not found' });
+    }
+
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ error: 'Invalid ID or server error' });
   }
 });
 
 
 
-
 // Get donation requests by requester email
-app.get('/donation-requests/:email', async (req, res) => {
+app.get('/donation-requests/user/:email', async (req, res) => {
   try {
     const { email } = req.params;
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 3 } = req.query;
 
-    const query = { requesterEmail: email }; // Match the `requesterEmail` field in your MongoDB
+    const query = { requesterEmail: email };
     if (status) {
-      query.status = status; // Optionally filter by status
+      query.status = status;
     }
 
-    const options = {
-      skip: (parseInt(page) - 1) * parseInt(limit),
-      limit: parseInt(limit),
-    };
-    const donationRequests = await donationRequestCollection.find(query, options).toArray();
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
+
+    const donationRequests = await donationRequestCollection
+      .find(query)
+      .sort({ donationDate: -1 }) // Sort by donationDate descending (most recent first)
+      .skip(skip)
+      .limit(limitNum)
+      .toArray();
+
     const total = await donationRequestCollection.countDocuments(query);
+
     res.send({ donationRequests, total });
   } catch (error) {
     console.error("Error fetching donation requests:", error);
@@ -298,7 +303,35 @@ app.get('/donation-requests/:email', async (req, res) => {
 
 
 
+app.patch('/donation-requests/:id/assign-donor', async (req, res) => {
+  const { id } = req.params;
+  const { donorId, name, email, fullAddress } = req.body;
 
+  if (!donorId || !name || !email) {
+    return res.status(400).send({ error: 'Donor info (donorId, name, email) is required' });
+  }
+
+  try {
+    const updateResult = await donationRequestCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          donor: { donorId: new ObjectId(donorId), name, email, fullAddress: fullAddress || '' },
+          status: 'inprogress' // Optionally update status on assignment
+        }
+      }
+    );
+
+    if (updateResult.modifiedCount === 1) {
+      res.send({ message: 'Donor assigned successfully' });
+    } else {
+      res.status(404).send({ error: 'Donation request not found' });
+    }
+  } catch (error) {
+    console.error('Error assigning donor:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
 
 
 // Update donation request status
@@ -330,6 +363,7 @@ const verifyAdminOrVolunteer = async (req, res, next) => {
 
   next();
 };
+
 //Blog related apis
 app.post('/blogs', async (req, res) => {
   const { title, thumbnail, content, createdBy } = req.body;
@@ -370,6 +404,15 @@ app.get('/blogs', async (req, res) => {
     res.status(500).send({ message: 'Error fetching blogs' });
   }
 });
+app.get('/blogs/:id', async (req, res) => {
+  const id = req.params.id;
+  const blog = await blogCollection.findOne({ _id: new ObjectId(id) });
+  if (!blog) {
+    return res.status(404).send({ message: 'Blog not found' });
+  }
+  res.send(blog);
+});
+
 
 app.patch('/blogs/:id/status', async (req, res) => {
   const id = req.params.id;
@@ -431,8 +474,8 @@ app.get('/payments/:email', verifyToken, async (req, res) => {
 })
 
 app.post('/payments', async (req, res) => {
-  const { email, price, transactionId, date, status } = req.body;
-  if (!email || !price || !transactionId || !date || !status) {
+  const { email, price, transactionId, date, name, status } = req.body;
+  if (!email || !price || !transactionId || !date || !status || !name) {
     return res.status(400).send({ message: "Missing required fields in payment data" });
   }
   try {
@@ -478,6 +521,25 @@ app.get('/admin-state', async (req, res) => {
     revenue
   })
 })
+app.get('/fundings', verifyToken, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const totalCount = await paymentCollection.countDocuments();
+    const fundings = await paymentCollection
+      .find({})
+      .sort({ date: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
+
+    res.send({ fundings, totalCount });
+  } catch (error) {
+    console.error('Error fetching fundings:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
 
 
 
